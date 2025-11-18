@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import requests
 
-app = FastAPI(title="Job Finder API", version="1.0.0")
+app = FastAPI(title="Job Finder API", version="1.0.1")
 
 app.add_middleware(
     CORSMiddleware,
@@ -104,8 +104,9 @@ def search_jobs(
         r = requests.get("https://remotive.com/api/remote-jobs", params=remotive_params, timeout=10)
         if r.ok:
             data = r.json()
-            for item in data.get("jobs", [])[:limit]:
-                jobs.append(Job(
+            for item in data.get("jobs", []):
+                # Basic normalization
+                job = Job(
                     id=str(item.get("id")),
                     title=item.get("title") or "Untitled",
                     company=item.get("company_name"),
@@ -116,23 +117,43 @@ def search_jobs(
                     source="Remotive",
                     tags=item.get("tags"),
                     description=item.get("description")
-                ))
+                )
+
+                # Location filtering (best-effort, case-insensitive substring match)
+                if location:
+                    loc_src = (job.location or "").lower()
+                    if location.lower() not in loc_src:
+                        # allow common remote-anywhere synonyms if user typed "remote" or similar
+                        user_loc = location.lower().strip()
+                        remote_synonyms = {"remote", "anywhere", "worldwide", "global"}
+                        if not (user_loc in remote_synonyms and any(s in loc_src for s in remote_synonyms)):
+                            continue
+
+                # Remote filter (best-effort)
+                if remote is True:
+                    loc_src = (job.location or "").lower()
+                    if not any(s in loc_src for s in ["remote", "anywhere", "worldwide", "global"]):
+                        continue
+                # if remote is False, we keep as-is (Remotive skews remote already)
+
+                jobs.append(job)
     except Exception:
         # Silently continue with what we have
         pass
 
     # Optionally: add a fallback link to Google Jobs search when no provider used
-    if not jobs and query:
+    if not jobs and (query or location):
         # Provide synthetic entries linking to Google, Indeed, LinkedIn searches
+        q = " ".join([p for p in [query, location] if p])
         providers = [
-            ("Google Jobs", f"https://www.google.com/search?q={query.replace(' ', '+')}+jobs"),
-            ("LinkedIn", f"https://www.linkedin.com/jobs/search/?keywords={query.replace(' ', '%20')}") ,
-            ("Indeed", f"https://www.indeed.com/jobs?q={query.replace(' ', '+')}")
+            ("Google Jobs", f"https://www.google.com/search?q={q.replace(' ', '+')}+jobs"),
+            ("LinkedIn", f"https://www.linkedin.com/jobs/search/?keywords={q.replace(' ', '%20')}") ,
+            ("Indeed", f"https://www.indeed.com/jobs?q={q.replace(' ', '+')}")
         ]
         for i, (name, url) in enumerate(providers):
             jobs.append(Job(
                 id=f"fallback-{i}",
-                title=f"Search '{query}' on {name}",
+                title=f"Search '{q}' on {name}",
                 company=None,
                 location=location,
                 type=None,
