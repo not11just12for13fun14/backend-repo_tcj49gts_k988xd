@@ -12,7 +12,7 @@ Model name is converted to lowercase for the collection name:
 """
 
 from pydantic import BaseModel, Field
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 # Example schemas (replace with your own):
 
@@ -37,6 +37,34 @@ class Product(BaseModel):
     price: float = Field(..., ge=0, description="Price in dollars")
     category: str = Field(..., description="Product category")
     in_stock: bool = Field(True, description="Whether product is in stock")
+
+# Job finder specific schemas
+
+class Search(BaseModel):
+    """
+    Saved search queries from users
+    Collection name: "search"
+    """
+    query: Optional[str] = Field(None, description="Free-text search keywords")
+    location: Optional[str] = Field(None, description="City, state, or country")
+    category: Optional[str] = Field(None, description="Job category or function")
+    job_type: Optional[str] = Field(None, description="full_time, part_time, contract, internship")
+    remote: Optional[bool] = Field(None, description="Remote-only filter")
+    salary_min: Optional[int] = Field(None, ge=0, description="Minimum salary filter (USD)")
+    source: Optional[str] = Field("remotive", description="Which provider was used")
+
+class SavedJob(BaseModel):
+    """
+    User-saved job items
+    Collection name: "savedjob"
+    """
+    title: str
+    company: Optional[str] = None
+    location: Optional[str] = None
+    url: str
+    source: Optional[str] = Field("remotive", description="Origin job board or API")
+    tags: Optional[List[str]] = None
+    meta: Optional[Dict[str, Any]] = None
 
 # Add your own schemas here:
 # --------------------------------------------------
